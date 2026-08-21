@@ -70,44 +70,95 @@ async function prepareBuiltInFile(relativePath: string) {
 export const prepareBuiltInBgm = () => prepareBuiltInFile('audio/M800002dNKFX14MVND.mp3')
 const prepareBuiltInNarration = (id: string) => prepareBuiltInFile(`audio/narration/${id}.mp3`)
 
-async function playBlob(blob: Blob, loop = false, volume = 1) {
+interface AudioPlayer { audio: HTMLAudioElement; finished: Promise<void>; dispose: () => void }
+
+let playbackGeneration = 0
+let bgmGeneration = 0
+let activeNarration: AudioPlayer | null = null
+let activeBgm: AudioPlayer | null = null
+let finishSpeech: (() => void) | null = null
+
+async function playBlob(blob: Blob, loop = false, volume = 1): Promise<AudioPlayer> {
   const url = URL.createObjectURL(blob)
   const audio = new Audio(url); audio.loop = loop; audio.volume = volume
-  await audio.play()
-  return { audio, dispose: () => { audio.pause(); URL.revokeObjectURL(url) } }
+  let settled = false
+  let resolveFinished = () => {}
+  const finished = new Promise<void>((resolve) => { resolveFinished = resolve })
+  const settle = () => { if (!settled) { settled = true; resolveFinished() } }
+  audio.onended = settle; audio.onerror = settle
+  const dispose = () => {
+    if (settled && !loop) { URL.revokeObjectURL(url); return }
+    audio.pause(); audio.removeAttribute('src'); audio.load(); settle(); URL.revokeObjectURL(url)
+  }
+  try { await audio.play() } catch (error) { dispose(); throw error }
+  return { audio, finished, dispose }
 }
 
 async function speakText(text: string, settings: VoiceSettings) {
   await new Promise<void>((resolve) => {
+    let settled = false
+    const done = () => {
+      if (settled) return
+      settled = true
+      if (finishSpeech === done) finishSpeech = null
+      resolve()
+    }
+    finishSpeech = done
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'zh-CN'; utterance.rate = settings.rate; utterance.pitch = 0.88; utterance.volume = 1
     const voice = chineseVoice(); if (voice) utterance.voice = voice
-    utterance.onend = () => resolve(); utterance.onerror = () => resolve()
+    utterance.onend = done; utterance.onerror = done
     window.speechSynthesis.speak(utterance)
   })
 }
 
-export function stopSpeech() { window.speechSynthesis?.cancel() }
+export function stopSpeech() {
+  playbackGeneration += 1
+  window.speechSynthesis?.cancel()
+  finishSpeech?.(); finishSpeech = null
+  activeNarration?.dispose(); activeNarration = null
+}
 
 export async function speakLines(lines: NarrationLine[], settings: VoiceSettings) {
   if (!settings.enabled) return
+  const generation = playbackGeneration
   for (const line of lines) {
     const audioBlob = await cachedAudio(line.id) ?? await prepareBuiltInNarration(line.id)
+    if (generation !== playbackGeneration) return
     if (audioBlob) {
-      const player = await playBlob(audioBlob)
-      await new Promise<void>((resolve) => { player.audio.onended = () => resolve(); player.audio.onerror = () => resolve() })
-      player.dispose()
+      try {
+        const player = await playBlob(audioBlob)
+        if (generation !== playbackGeneration) { player.dispose(); return }
+        activeNarration = player
+        await player.finished
+        if (activeNarration === player) activeNarration = null
+        player.dispose()
+      } catch { if (generation === playbackGeneration && 'speechSynthesis' in window) await speakText(line.text, settings) }
     } else if ('speechSynthesis' in window) await speakText(line.text, settings)
+    if (generation !== playbackGeneration) return
     await pause(460)
   }
 }
 
-export async function withBackgroundMusic(settings: VoiceSettings, action: () => Promise<void>) {
-  let bgm: Awaited<ReturnType<typeof playBlob>> | null = null
-  if (settings.enabled) {
-    const blob = await cachedAudio('bgm') ?? await prepareBuiltInBgm()
-    if (blob) try { bgm = await playBlob(blob, true, settings.bgmVolume) } catch { bgm = null }
-  }
-  try { await action() } finally { bgm?.dispose() }
+export async function startBackgroundMusic(settings: VoiceSettings) {
+  stopBackgroundMusic()
+  const generation = bgmGeneration
+  if (!settings.enabled) return
+  const blob = await cachedAudio('bgm') ?? await prepareBuiltInBgm()
+  if (!blob || generation !== bgmGeneration) return
+  try {
+    const player = await playBlob(blob, true, settings.bgmVolume)
+    if (generation !== bgmGeneration) player.dispose()
+    else activeBgm = player
+  } catch { activeBgm = null }
 }
+
+export function setBackgroundMusicVolume(volume: number) { if (activeBgm) activeBgm.audio.volume = volume }
+
+export function stopBackgroundMusic() {
+  bgmGeneration += 1
+  activeBgm?.dispose(); activeBgm = null
+}
+
+export function stopAllAudio() { stopSpeech(); stopBackgroundMusic() }
 
