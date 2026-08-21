@@ -22,6 +22,7 @@ export const NARRATION_LINES: NarrationLine[] = [
 ]
 
 const ASSET_CACHE = 'nightfall-custom-audio-v1'
+const BUILTIN_CACHE = 'nightfall-builtin-audio-v1'
 const ASSET_META_KEY = 'nightfall-companion:audio-assets'
 const assetUrl = (id: string) => `https://nightfall.local/audio/${encodeURIComponent(id)}`
 export const pause = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
@@ -60,6 +61,22 @@ async function cachedAudio(id: string) {
   return response ? response.blob() : null
 }
 
+export async function prepareBuiltInBgm() {
+  const url = `${import.meta.env.BASE_URL}audio/M800002dNKFX14MVND.mp3`
+  if (!('caches' in window)) {
+    try { const response = await fetch(url); return response.ok ? response.blob() : null } catch { return null }
+  }
+  const cache = await caches.open(BUILTIN_CACHE)
+  const stored = await cache.match(url)
+  if (stored) return stored.blob()
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+    await cache.put(url, response.clone())
+    return response.blob()
+  } catch { return null }
+}
+
 async function playBlob(blob: Blob, loop = false, volume = 1) {
   const url = URL.createObjectURL(blob)
   const audio = new Audio(url); audio.loop = loop; audio.volume = volume
@@ -95,7 +112,7 @@ export async function speakLines(lines: NarrationLine[], settings: VoiceSettings
 export async function withBackgroundMusic(settings: VoiceSettings, action: () => Promise<void>) {
   let bgm: Awaited<ReturnType<typeof playBlob>> | null = null
   if (settings.enabled) {
-    const blob = await cachedAudio('bgm')
+    const blob = await cachedAudio('bgm') ?? await prepareBuiltInBgm()
     if (blob) try { bgm = await playBlob(blob, true, settings.bgmVolume) } catch { bgm = null }
   }
   try { await action() } finally { bgm?.dispose() }

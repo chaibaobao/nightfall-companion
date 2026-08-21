@@ -10,6 +10,7 @@
 - 一次黎明阶段与可循环进行的多个夜晚阶段
 - 每夜可独立选择是否启用警长主持流程
 - 可为每句主持词上传替代音频，并配置循环 BGM
+- 内置默认 BGM；首次获取后自动缓存，本机上传的 BGM 优先覆盖
 - 严格分离 `blackCatTarget`、`witchKillTarget`、`sheriffProtectTarget`
 - 游戏进度、玩家和偏好仅保存在本机 LocalStorage
 - 无账号、无服务器、无数据库
@@ -18,6 +19,8 @@
 > 浏览器提供的中文语音音色因设备而异。iOS Safari 和部分 Android 浏览器要求用户先点击“开始游戏”，应用已将此操作作为语音激活手势。
 
 自定义主持音频与 BGM 保存在浏览器的 Cache Storage 中，以支持离线播放并避免 LocalStorage 的容量限制；游戏状态、目标与偏好仍保存在 LocalStorage。清除站点数据会同时移除这些本地音频。
+
+内置默认 BGM 位于 `public/audio/M800002dNKFX14MVND.mp3`。应用不会在首次打开时阻塞等待音乐，而是在后台缓存；缓存完成后即可离线播放。
 
 ## 本地运行
 
