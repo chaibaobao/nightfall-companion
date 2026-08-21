@@ -9,7 +9,8 @@
 - 基于浏览器 Web Speech API 的中文普通话主持
 - 一次黎明阶段与可循环进行的多个夜晚阶段
 - 每夜可独立选择是否启用警长主持流程
-- 可为每句主持词上传替代音频，并配置循环 BGM
+- 主持流程整理为 6 段可替换语音，并支持循环 BGM
+- 黎明结束后可主动揭示或隐藏黑猫位置
 - 内置默认 BGM；首次获取后自动缓存，本机上传的 BGM 优先覆盖
 - 严格分离 `blackCatTarget`、`witchKillTarget`、`sheriffProtectTarget`
 - 游戏进度、玩家和偏好仅保存在本机 LocalStorage
@@ -21,6 +22,17 @@
 自定义主持音频与 BGM 保存在浏览器的 Cache Storage 中，以支持离线播放并避免 LocalStorage 的容量限制；游戏状态、目标与偏好仍保存在 LocalStorage。清除站点数据会同时移除这些本地音频。
 
 内置默认 BGM 位于 `public/audio/M800002dNKFX14MVND.mp3`。应用不会在首次打开时阻塞等待音乐，而是在后台缓存；缓存完成后即可离线播放。
+
+## GitHub 内置主持语音
+
+将以下 6 个 MP3 文件放入 `public/audio/narration/`，应用会优先使用它们；本机上传仍具有最高优先级：
+
+- `dawn-intro.mp3`：黎明开场与女巫选择提示
+- `dawn-complete.mp3`：黑猫放置完成与天亮
+- `night-intro.mp3`：夜晚开场与女巫谋杀提示
+- `witch-complete-sheriff.mp3`：谋杀完成并唤醒警长
+- `sheriff-complete.mp3`：警长选择完成与天亮
+- `witch-complete-no-sheriff.mp3`：无警长时的谋杀完成与天亮
 
 ## 本地运行
 

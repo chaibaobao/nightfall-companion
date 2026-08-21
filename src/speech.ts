@@ -3,22 +3,12 @@ import type { VoiceSettings } from './types'
 export interface NarrationLine { id: string; label: string; text: string }
 
 export const NARRATION_LINES: NarrationLine[] = [
-  { id: 'dawn-start', label: '黎明开始', text: '黎明阶段开始。' },
-  { id: 'all-close-eyes', label: '所有人闭眼', text: '所有人闭眼。' },
-  { id: 'witch-open-eyes', label: '女巫睁眼', text: '女巫请睁眼。' },
-  { id: 'black-cat-select', label: '选择黑猫对象', text: '请选择放置黑猫的对象。' },
-  { id: 'witch-any-player', label: '女巫选择规则', text: '女巫可以选择任意玩家，包括自己。' },
-  { id: 'black-cat-placed', label: '黑猫已放置', text: '黑猫已放置。' },
-  { id: 'witch-close-eyes', label: '女巫闭眼', text: '女巫请闭眼。' },
-  { id: 'day-breaks', label: '天亮', text: '天亮了。' },
-  { id: 'night-falls', label: '夜晚降临', text: '夜晚降临。' },
-  { id: 'witch-kill-select', label: '选择谋杀对象', text: '请选择今晚要谋杀的对象。' },
-  { id: 'target-selected', label: '对象已选择', text: '对象已选择。' },
-  { id: 'sheriff-open-eyes', label: '警长睁眼', text: '警长请睁眼。' },
-  { id: 'sheriff-select', label: '选择保护对象', text: '请选择需要保护的对象。' },
-  { id: 'sheriff-rule', label: '警长选择规则', text: '警长不能保护自己。' },
-  { id: 'sheriff-close-eyes', label: '警长闭眼', text: '警长请闭眼。' },
-  { id: 'results-intro', label: '公布结果', text: '昨夜行动结果如下。' },
+  { id: 'dawn-intro', label: '黎明 · 语音一', text: '黎明开始，所有人请闭眼。女巫请睁眼，请选择放置黑猫的对象。女巫可以选择任意玩家，包括自己。' },
+  { id: 'dawn-complete', label: '黎明 · 语音二', text: '黑猫已放置，女巫请闭眼。三、二、一，天亮了，请所有玩家睁眼。' },
+  { id: 'night-intro', label: '夜晚 · 语音一', text: '夜晚降临，所有玩家天黑请闭眼。接下来，请所有曾是女巫或现在是女巫的玩家睁眼，决定你们今晚要谋杀的对象。女巫可以谋杀任何人，包括自己。' },
+  { id: 'witch-complete-sheriff', label: '夜晚 · 语音二（有警长）', text: '谋杀对象已选择，女巫请闭眼。三、二、一。警长请睁眼，选择你今晚要保护的对象。注意，警长不可以保护自己。' },
+  { id: 'sheriff-complete', label: '夜晚 · 语音三（警长选择后）', text: '对象已选择。警长请闭眼。三、二、一，天亮了，请所有玩家睁眼。' },
+  { id: 'witch-complete-no-sheriff', label: '夜晚 · 无警长结束语音', text: '谋杀对象已选择，女巫请闭眼。三、二、一。天亮了，请所有玩家睁眼。' },
 ]
 
 const ASSET_CACHE = 'nightfall-custom-audio-v1'
@@ -61,8 +51,8 @@ async function cachedAudio(id: string) {
   return response ? response.blob() : null
 }
 
-export async function prepareBuiltInBgm() {
-  const url = `${import.meta.env.BASE_URL}audio/M800002dNKFX14MVND.mp3`
+async function prepareBuiltInFile(relativePath: string) {
+  const url = `${import.meta.env.BASE_URL}${relativePath}`
   if (!('caches' in window)) {
     try { const response = await fetch(url); return response.ok ? response.blob() : null } catch { return null }
   }
@@ -76,6 +66,9 @@ export async function prepareBuiltInBgm() {
     return response.blob()
   } catch { return null }
 }
+
+export const prepareBuiltInBgm = () => prepareBuiltInFile('audio/M800002dNKFX14MVND.mp3')
+const prepareBuiltInNarration = (id: string) => prepareBuiltInFile(`audio/narration/${id}.mp3`)
 
 async function playBlob(blob: Blob, loop = false, volume = 1) {
   const url = URL.createObjectURL(blob)
@@ -99,9 +92,9 @@ export function stopSpeech() { window.speechSynthesis?.cancel() }
 export async function speakLines(lines: NarrationLine[], settings: VoiceSettings) {
   if (!settings.enabled) return
   for (const line of lines) {
-    const custom = await cachedAudio(line.id)
-    if (custom) {
-      const player = await playBlob(custom)
+    const audioBlob = await cachedAudio(line.id) ?? await prepareBuiltInNarration(line.id)
+    if (audioBlob) {
+      const player = await playBlob(audioBlob)
       await new Promise<void>((resolve) => { player.audio.onended = () => resolve(); player.audio.onerror = () => resolve() })
       player.dispose()
     } else if ('speechSynthesis' in window) await speakText(line.text, settings)
