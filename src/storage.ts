@@ -10,9 +10,11 @@ export const initialGame: GameState = {
   blackCatTarget: null,
   witchKillTarget: null,
   sheriffProtectTarget: null,
+  sheriffEnabled: true,
+  history: [],
 }
 
-export const initialVoice: VoiceSettings = { enabled: true, rate: 0.82 }
+export const initialVoice: VoiceSettings = { enabled: true, rate: 0.82, bgmVolume: 0.18 }
 
 export function loadGame(): GameState {
   try {
