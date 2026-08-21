@@ -70,7 +70,9 @@ async function prepareBuiltInFile(relativePath: string) {
 export const prepareBuiltInBgm = () => prepareBuiltInFile('audio/M800002dNKFX14MVND.mp3')
 const prepareBuiltInNarration = (id: string) => prepareBuiltInFile(`audio/narration/${id}.mp3`)
 
-interface AudioPlayer { audio: HTMLAudioElement; finished: Promise<void>; dispose: () => void }
+type AudioChannel = 'narration' | 'bgm'
+interface AudioPlayer { finished: Promise<void>; dispose: () => void }
+interface AudioGraph { context: AudioContext; narrationGain: GainNode; bgmGain: GainNode }
 interface SpeechPlayback {
   text: string
   settings: VoiceSettings
@@ -86,21 +88,47 @@ let speechRestartGeneration = 0
 let activeNarration: AudioPlayer | null = null
 let activeBgm: AudioPlayer | null = null
 let activeSpeech: SpeechPlayback | null = null
+let audioGraph: AudioGraph | null = null
 
-async function playBlob(blob: Blob, loop = false, volume = 1): Promise<AudioPlayer> {
-  const url = URL.createObjectURL(blob)
-  const audio = new Audio(url); audio.loop = loop; audio.volume = volume
+function getAudioGraph() {
+  if (audioGraph) return audioGraph
+  const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioContextConstructor) throw new Error('当前浏览器不支持 Web Audio API')
+  const context = new AudioContextConstructor()
+  const narrationGain = context.createGain()
+  const bgmGain = context.createGain()
+  narrationGain.connect(context.destination)
+  bgmGain.connect(context.destination)
+  audioGraph = { context, narrationGain, bgmGain }
+  return audioGraph
+}
+
+async function unlockAudioEngine() {
+  const graph = getAudioGraph()
+  if (graph.context.state === 'suspended') await graph.context.resume()
+  return graph
+}
+
+async function playBlob(blob: Blob, loop: boolean, channel: AudioChannel): Promise<AudioPlayer> {
+  const graph = await unlockAudioEngine()
+  const buffer = await graph.context.decodeAudioData(await blob.arrayBuffer())
+  const source = graph.context.createBufferSource()
+  source.buffer = buffer
+  source.loop = loop
+  source.connect(channel === 'narration' ? graph.narrationGain : graph.bgmGain)
   let settled = false
   let resolveFinished = () => {}
   const finished = new Promise<void>((resolve) => { resolveFinished = resolve })
   const settle = () => { if (!settled) { settled = true; resolveFinished() } }
-  audio.onended = settle; audio.onerror = settle
+  source.onended = settle
   const dispose = () => {
-    if (settled && !loop) { URL.revokeObjectURL(url); return }
-    audio.pause(); audio.removeAttribute('src'); audio.load(); settle(); URL.revokeObjectURL(url)
+    source.onended = null
+    try { source.stop() } catch { /* the source already ended */ }
+    source.disconnect()
+    settle()
   }
-  try { await audio.play() } catch (error) { dispose(); throw error }
-  return { audio, finished, dispose }
+  source.start()
+  return { finished, dispose }
 }
 
 function finishSpeechPlayback(playback: SpeechPlayback) {
@@ -145,12 +173,14 @@ export function stopSpeech() {
 export async function speakLines(lines: NarrationLine[], settings: VoiceSettings) {
   if (!settings.enabled) return
   const generation = playbackGeneration
+  const graph = await unlockAudioEngine()
+  graph.narrationGain.gain.setValueAtTime(settings.narrationVolume, graph.context.currentTime)
   for (const line of lines) {
     const audioBlob = await cachedAudio(line.id) ?? await prepareBuiltInNarration(line.id)
     if (generation !== playbackGeneration) return
     if (audioBlob) {
       try {
-        const player = await playBlob(audioBlob, false, settings.narrationVolume)
+        const player = await playBlob(audioBlob, false, 'narration')
         if (generation !== playbackGeneration) { player.dispose(); return }
         activeNarration = player
         await player.finished
@@ -167,19 +197,23 @@ export async function startBackgroundMusic(settings: VoiceSettings) {
   stopBackgroundMusic()
   const generation = bgmGeneration
   if (!settings.enabled) return
+  const graph = await unlockAudioEngine()
+  graph.bgmGain.gain.setValueAtTime(settings.bgmVolume, graph.context.currentTime)
   const blob = await cachedAudio('bgm') ?? await prepareBuiltInBgm()
   if (!blob || generation !== bgmGeneration) return
   try {
-    const player = await playBlob(blob, true, settings.bgmVolume)
+    const player = await playBlob(blob, true, 'bgm')
     if (generation !== bgmGeneration) player.dispose()
     else activeBgm = player
   } catch { activeBgm = null }
 }
 
-export function setBackgroundMusicVolume(volume: number) { if (activeBgm) activeBgm.audio.volume = volume }
+export function setBackgroundMusicVolume(volume: number) {
+  if (audioGraph) audioGraph.bgmGain.gain.setValueAtTime(volume, audioGraph.context.currentTime)
+}
 
 export function setNarrationVolume(volume: number) {
-  if (activeNarration) activeNarration.audio.volume = volume
+  if (audioGraph) audioGraph.narrationGain.gain.setValueAtTime(volume, audioGraph.context.currentTime)
   const speech = activeSpeech
   if (!speech || speech.settled) return
   speech.settings = { ...speech.settings, narrationVolume: volume }
