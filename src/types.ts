@@ -8,6 +8,7 @@ export type Phase =
   | 'SHERIFF_PROTECT_ACTION'
   | 'RESULTS_READY'
   | 'RESULTS_REVEALED'
+  | 'GAME_COMPLETE'
 
 export interface Player {
   id: number
@@ -21,10 +22,20 @@ export interface GameState {
   blackCatTarget: number | null
   witchKillTarget: number | null
   sheriffProtectTarget: number | null
+  sheriffEnabled: boolean
+  history: NightRecord[]
+}
+
+export interface NightRecord {
+  nightNumber: number
+  witchKillTarget: number
+  sheriffProtectTarget: number | null
+  sheriffEnabled: boolean
 }
 
 export interface VoiceSettings {
   enabled: boolean
   rate: number
+  bgmVolume: number
 }
 
