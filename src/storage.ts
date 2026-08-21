@@ -14,7 +14,7 @@ export const initialGame: GameState = {
   history: [],
 }
 
-export const initialVoice: VoiceSettings = { enabled: true, rate: 0.82, bgmVolume: 0.18 }
+export const initialVoice: VoiceSettings = { enabled: true, rate: 0.82, narrationVolume: 0.9, bgmVolume: 0.18 }
 
 export function loadGame(): GameState {
   try {

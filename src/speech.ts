@@ -71,12 +71,21 @@ export const prepareBuiltInBgm = () => prepareBuiltInFile('audio/M800002dNKFX14M
 const prepareBuiltInNarration = (id: string) => prepareBuiltInFile(`audio/narration/${id}.mp3`)
 
 interface AudioPlayer { audio: HTMLAudioElement; finished: Promise<void>; dispose: () => void }
+interface SpeechPlayback {
+  text: string
+  settings: VoiceSettings
+  charIndex: number
+  utterance: SpeechSynthesisUtterance | null
+  resolve: () => void
+  settled: boolean
+}
 
 let playbackGeneration = 0
 let bgmGeneration = 0
+let speechRestartGeneration = 0
 let activeNarration: AudioPlayer | null = null
 let activeBgm: AudioPlayer | null = null
-let finishSpeech: (() => void) | null = null
+let activeSpeech: SpeechPlayback | null = null
 
 async function playBlob(blob: Blob, loop = false, volume = 1): Promise<AudioPlayer> {
   const url = URL.createObjectURL(blob)
@@ -94,28 +103,42 @@ async function playBlob(blob: Blob, loop = false, volume = 1): Promise<AudioPlay
   return { audio, finished, dispose }
 }
 
+function finishSpeechPlayback(playback: SpeechPlayback) {
+  if (playback.settled) return
+  playback.settled = true
+  if (activeSpeech === playback) activeSpeech = null
+  playback.resolve()
+}
+
+function startSpeechPlayback(playback: SpeechPlayback) {
+  if (playback.settled || activeSpeech !== playback) return
+  const startIndex = playback.charIndex
+  const utterance = new SpeechSynthesisUtterance(playback.text.slice(startIndex))
+  utterance.lang = 'zh-CN'; utterance.rate = playback.settings.rate; utterance.pitch = 0.88; utterance.volume = playback.settings.narrationVolume
+  const voice = chineseVoice(); if (voice) utterance.voice = voice
+  utterance.onboundary = (event) => { if (playback.utterance === utterance) playback.charIndex = startIndex + event.charIndex }
+  utterance.onend = () => { if (playback.utterance === utterance) finishSpeechPlayback(playback) }
+  utterance.onerror = () => { if (playback.utterance === utterance) finishSpeechPlayback(playback) }
+  playback.utterance = utterance
+  window.speechSynthesis.speak(utterance)
+}
+
 async function speakText(text: string, settings: VoiceSettings) {
   await new Promise<void>((resolve) => {
-    let settled = false
-    const done = () => {
-      if (settled) return
-      settled = true
-      if (finishSpeech === done) finishSpeech = null
-      resolve()
-    }
-    finishSpeech = done
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'zh-CN'; utterance.rate = settings.rate; utterance.pitch = 0.88; utterance.volume = 1
-    const voice = chineseVoice(); if (voice) utterance.voice = voice
-    utterance.onend = done; utterance.onerror = done
-    window.speechSynthesis.speak(utterance)
+    speechRestartGeneration += 1
+    const playback: SpeechPlayback = { text, settings, charIndex: 0, utterance: null, resolve, settled: false }
+    activeSpeech = playback
+    startSpeechPlayback(playback)
   })
 }
 
 export function stopSpeech() {
   playbackGeneration += 1
+  speechRestartGeneration += 1
+  const speech = activeSpeech
+  if (speech?.utterance) { speech.utterance.onend = null; speech.utterance.onerror = null }
   window.speechSynthesis?.cancel()
-  finishSpeech?.(); finishSpeech = null
+  if (speech) finishSpeechPlayback(speech)
   activeNarration?.dispose(); activeNarration = null
 }
 
@@ -127,7 +150,7 @@ export async function speakLines(lines: NarrationLine[], settings: VoiceSettings
     if (generation !== playbackGeneration) return
     if (audioBlob) {
       try {
-        const player = await playBlob(audioBlob)
+        const player = await playBlob(audioBlob, false, settings.narrationVolume)
         if (generation !== playbackGeneration) { player.dispose(); return }
         activeNarration = player
         await player.finished
@@ -154,6 +177,17 @@ export async function startBackgroundMusic(settings: VoiceSettings) {
 }
 
 export function setBackgroundMusicVolume(volume: number) { if (activeBgm) activeBgm.audio.volume = volume }
+
+export function setNarrationVolume(volume: number) {
+  if (activeNarration) activeNarration.audio.volume = volume
+  const speech = activeSpeech
+  if (!speech || speech.settled) return
+  speech.settings = { ...speech.settings, narrationVolume: volume }
+  if (speech.utterance) { speech.utterance.onend = null; speech.utterance.onerror = null }
+  window.speechSynthesis.cancel()
+  const restart = ++speechRestartGeneration
+  window.setTimeout(() => { if (restart === speechRestartGeneration) startSpeechPlayback(speech) }, 0)
+}
 
 export function stopBackgroundMusic() {
   bgmGeneration += 1

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Eye, EyeOff, Moon, Music, Settings, Shield, Sparkles, Upload, Volume2, VolumeX, X } from 'lucide-react'
 import { clearGame, initialGame, loadGame, loadVoice, saveGame, saveVoice } from './storage'
-import { getAudioAssetNames, NARRATION_LINES, prepareBuiltInBgm, removeAudioAsset, saveAudioAsset, setBackgroundMusicVolume, speakLines, startBackgroundMusic, stopAllAudio, stopBackgroundMusic } from './speech'
+import { getAudioAssetNames, NARRATION_LINES, prepareBuiltInBgm, removeAudioAsset, saveAudioAsset, setBackgroundMusicVolume, setNarrationVolume, speakLines, startBackgroundMusic, stopAllAudio, stopBackgroundMusic } from './speech'
 import type { GameState, Phase, Player, VoiceSettings } from './types'
 
 const line = (id: string) => NARRATION_LINES.find((item) => item.id === id)!
@@ -38,6 +38,7 @@ export default function App() {
   useEffect(() => { void prepareBuiltInBgm() }, [])
   useEffect(() => saveGame(game), [game])
   useEffect(() => saveVoice(voice), [voice])
+  useEffect(() => setNarrationVolume(voice.narrationVolume), [voice.narrationVolume])
   useEffect(() => setBackgroundMusicVolume(voice.bgmVolume), [voice.bgmVolume])
 
   const copy = phaseCopy[game.phase]
@@ -133,7 +134,8 @@ export default function App() {
     {settingsOpen && <div className="sheet-backdrop" onClick={() => setSettingsOpen(false)}><aside className="settings-sheet" onClick={(e) => e.stopPropagation()}><div className="sheet-handle" /><div className="sheet-title"><div><span>偏好设置</span><strong>声音与主持</strong></div><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="关闭设置"><X size={20} /></button></div><div className="settings-scroll">
       <label className="toggle-row"><span>{voice.enabled ? <Volume2 /> : <VolumeX />}<i><strong>自动语音主持</strong><small>自定义音频优先，未上传时使用中文朗读</small></i></span><input type="checkbox" checked={voice.enabled} onChange={(e) => { if (!e.target.checked) stopAllAudio(); setVoice({ ...voice, enabled: e.target.checked }) }} /></label>
       <label className="rate-control"><span><strong>自动朗读语速</strong><output>{voice.rate.toFixed(2)}×</output></span><input type="range" min="0.65" max="1.1" step="0.05" value={voice.rate} onChange={(e) => setVoice({ ...voice, rate: Number(e.target.value) })} /><small><span>舒缓</span><span>自然</span></small></label>
-      <label className="rate-control"><span><strong>BGM 音量</strong><output>{Math.round(voice.bgmVolume * 100)}%</output></span><input type="range" min="0.05" max="0.5" step="0.05" value={voice.bgmVolume} onChange={(e) => setVoice({ ...voice, bgmVolume: Number(e.target.value) })} /></label>
+      <label className="rate-control"><span><strong>主持语音音量</strong><output>{Math.round(voice.narrationVolume * 100)}%</output></span><input type="range" min="0" max="1" step="0.05" value={voice.narrationVolume} onChange={(e) => setVoice({ ...voice, narrationVolume: Number(e.target.value) })} /><small><span>静音</span><span>最大</span></small></label>
+      <label className="rate-control"><span><strong>BGM 音量</strong><output>{Math.round(voice.bgmVolume * 100)}%</output></span><input type="range" min="0" max="1" step="0.05" value={voice.bgmVolume} onChange={(e) => setVoice({ ...voice, bgmVolume: Number(e.target.value) })} /><small><span>静音</span><span>最大</span></small></label>
       <details className="audio-library"><summary><span><Music size={17} /> 自定义主持音频</span><small>6 段语音</small></summary><p>本机上传优先于 GitHub 内置语音；未配置时使用中文自动朗读。</p><AudioUploadRow id="bgm" label="播报背景音乐（循环）" sublabel="已内置默认音乐，本机上传将优先覆盖" filename={audioNames.bgm} onUpload={uploadAudio} onRemove={async (id) => setAudioNames(await removeAudioAsset(id))} />{NARRATION_LINES.map((item) => <AudioUploadRow key={item.id} id={item.id} label={item.label} sublabel={item.text} filename={audioNames[item.id]} onUpload={uploadAudio} onRemove={async (id) => setAudioNames(await removeAudioAsset(id))} />)}</details>
       {audioMessage && <p className="audio-message">{audioMessage}</p>}{game.phase !== 'START' && <button className="danger-button" onClick={reset}>结束并清除本局</button>}
     </div></aside></div>}

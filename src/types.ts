@@ -36,6 +36,7 @@ export interface NightRecord {
 export interface VoiceSettings {
   enabled: boolean
   rate: number
+  narrationVolume: number
   bgmVolume: number
 }
 
