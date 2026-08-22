@@ -14,6 +14,7 @@ export const NARRATION_LINES: NarrationLine[] = [
 const ASSET_CACHE = 'nightfall-custom-audio-v1'
 const BUILTIN_CACHE = 'nightfall-builtin-audio-v1'
 const ASSET_META_KEY = 'nightfall-companion:audio-assets'
+const BGM_OUTPUT_LIMIT = 0.5
 const assetUrl = (id: string) => `https://nightfall.local/audio/${encodeURIComponent(id)}`
 export const pause = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
@@ -198,7 +199,7 @@ export async function startBackgroundMusic(settings: VoiceSettings) {
   const generation = bgmGeneration
   if (!settings.enabled) return
   const graph = await unlockAudioEngine()
-  graph.bgmGain.gain.setValueAtTime(settings.bgmVolume, graph.context.currentTime)
+  graph.bgmGain.gain.setValueAtTime(settings.bgmVolume * BGM_OUTPUT_LIMIT, graph.context.currentTime)
   const blob = await cachedAudio('bgm') ?? await prepareBuiltInBgm()
   if (!blob || generation !== bgmGeneration) return
   try {
@@ -209,7 +210,7 @@ export async function startBackgroundMusic(settings: VoiceSettings) {
 }
 
 export function setBackgroundMusicVolume(volume: number) {
-  if (audioGraph) audioGraph.bgmGain.gain.setValueAtTime(volume, audioGraph.context.currentTime)
+  if (audioGraph) audioGraph.bgmGain.gain.setValueAtTime(volume * BGM_OUTPUT_LIMIT, audioGraph.context.currentTime)
 }
 
 export function setNarrationVolume(volume: number) {
